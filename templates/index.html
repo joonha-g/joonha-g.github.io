@@ -3,38 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>음성 분석기 - 메인</title>
+    <title>Voice Analyze - 통합 대시보드</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
     <style>
-        /* --- 기존 style.css를 보완하는 추가 스타일 --- */
-        .section-divider { border: 0; height: 1px; background-color: #eee; margin: 25px 0; }
-        .sort-controls { margin: 20px 0 15px 0; }
-        .sort-controls span { font-weight: bold; color: #555; }
-        .sort-controls select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-left: 10px; background-color: #fff; }
-        
-        .analysis-history-list { list-style-type: none; padding-left: 0; margin-top: 15px; }
-        .analysis-history-list li { background-color: #f9f9f9; border: 1px solid #eee; padding: 15px; margin-bottom: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; font-size: 0.95em; }
-        .analysis-history-list strong { color: #337ab7; }
-        .similarity-score.high { color: #d9534f; font-weight: bold; }
-        .similarity-score.mid { color: #f0ad4e; font-weight: bold; }
-        .similarity-score.low { color: #5cb85c; font-weight: bold; }
-
-        .input-form-group { margin-bottom: 15px; }
-        .form-input-field { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        
-        /* 녹음기 컨트롤 */
-        .record-controls { display: flex; gap: 15px; margin-bottom: 20px; }
-        .record-controls .detect-btn { flex-grow: 1; }
-        .record-controls .detect-btn:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.7; }
-        .audio-playback { margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
-        
-        /* ⭐️ 로딩 스피너 스타일 (추가됨) */
+        /* 1. 로딩 스피너 스타일 */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.9); z-index: 9999;
+            background: rgba(255, 255, 255, 0.95); z-index: 9999;
             display: none; justify-content: center; align-items: center; flex-direction: column;
         }
         .spinner {
@@ -43,9 +21,36 @@
             animation: spin 1s linear infinite; margin-bottom: 20px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        /* 플래시 메시지 */
-        .flash-msg { color: #e74c3c; background: #fadbd8; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
+
+        /* 2. 탭 전환 스타일 */
+        .content-section { display: none; animation: fadeIn 0.4s ease-in-out; }
+        .content-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 3. 알림 메시지 스타일 */
+        .flash-container {
+            position: fixed; top: 20px; right: 20px; z-index: 1000; width: 300px;
+        }
+        .flash-message {
+            background: #fff; color: #333; padding: 15px 20px; margin-bottom: 10px;
+            border-left: 5px solid #764ba2; border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 0.95em; opacity: 1; transition: opacity 0.5s;
+        }
+
+        /* 4. 마이페이지 및 리스트 스타일 */
+        .history-item {
+            background: #f8f9fa; border: 1px solid #eee; border-radius: 8px;
+            padding: 15px; margin-bottom: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .badge { padding: 5px 10px; border-radius: 15px; font-size: 0.8em; font-weight: bold; color: white; }
+        .badge-high { background-color: #e74c3c; }   /* 위험 */
+        .badge-mid { background-color: #f39c12; }    /* 주의 */
+        .badge-low { background-color: #27ae60; }    /* 안전 */
+
+        /* 녹음기 스타일 */
+        .record-timer { font-size: 1.2em; font-weight: bold; color: #e74c3c; margin-left: 10px; display: none; }
     </style>
 </head>
 <body>
@@ -53,7 +58,17 @@
     <div id="loading-overlay">
         <div class="spinner"></div>
         <h3>AI가 정밀 분석 중입니다...</h3>
-        <p style="color: #666;">약 10~30초 정도 소요됩니다. 잠시만 기다려주세요.</p>
+        <p style="color: #666;">파일 크기에 따라 약 10~30초 정도 소요됩니다.</p>
+    </div>
+
+    <div class="flash-container">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for msg in messages %}
+                    <div class="flash-message">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
     </div>
 
     <div class="main-layout">
@@ -64,12 +79,12 @@
             </div>
             <nav class="sidebar-nav">
                 <ul>
-                    <li><a href="#" class="nav-item active" data-target="overview-section"><i class="fas fa-home"></i> 홈</a></li>
-                    <li><a href="#" class="nav-item" data-target="similarity-section"><i class="fas fa-magnifying-glass-chart"></i> 노래 표절 검사기</a></li>
-                    <li><a href="#" class="nav-item" data-target="cover-song-section"><i class="fas fa-music"></i> 커버곡 유사도 검사기</a></li>
-                    <li><a href="#" class="nav-item" data-target="record-create-section"><i class="fas fa-microphone-alt"></i> 음성 녹음기</a></li>
+                    <li><a href="#" class="nav-item active" onclick="showTab('home', this)"><i class="fas fa-home"></i> 홈</a></li>
+                    <li><a href="#" class="nav-item" onclick="showTab('plagiarism', this)"><i class="fas fa-magnifying-glass-chart"></i> 노래 표절 검사</a></li>
+                    <li><a href="#" class="nav-item" onclick="showTab('cover', this)"><i class="fas fa-music"></i> 커버곡 검사</a></li>
+                    <li><a href="#" class="nav-item" onclick="showTab('record', this)"><i class="fas fa-microphone-alt"></i> 음성 녹음기</a></li>
                     <li class="separator"></li>
-                    <li><a href="#" class="nav-item" data-target="my-page-section"><i class="fas fa-user"></i> 내 페이지</a></li>
+                    <li><a href="#" class="nav-item" onclick="showTab('mypage', this)"><i class="fas fa-user"></i> 내 페이지</a></li>
                     <li><a href="{{ url_for('logout') }}" class="nav-item logout"><i class="fas fa-sign-out-alt"></i> 로그아웃</a></li>
                 </ul>
             </nav>
@@ -77,154 +92,130 @@
 
         <main class="content-area">
             
-            {% with messages = get_flashed_messages() %}
-                {% if messages %}
-                    <div class="card" style="margin-bottom: 20px; border-left: 5px solid #e74c3c;">
-                        <p style="color: #c0392b; margin:0;">{{ messages[0] }}</p>
-                    </div>
-                {% endif %}
-            {% endwith %}
-
-            <section id="overview-section" class="content-section active">
-                <div class="intro-left-section">
-                    <h2>음성 유사도 분석으로 <br>당신의 아이디어를 지키세요</h2>
-                    <p>저희 서비스는 두 오디오 파일 간의 특징을 비교하여 유사성을 탐지하는 AI 도구입니다.</p>
-                    <ul class="features">
-                        <li><i class="fas fa-check-circle"></i> 두 오디오 파일의 주요 특징 비교</li>
-                        <li><i class="fas fa-check-circle"></i> 음성 및 음악 패턴 유사성 분석</li>
-                        <li><i class="fas fa-check-circle"></i> 백엔드 알고리즘 연동 완료</li>
-                    </ul>
-                </div>
-                <div class="intro-right-image">
-                    <div class="placeholder-image">
-                        <i class="fas fa-chart-line"></i>
-                        <p>Analysis Visualization</p>
+            <section id="home" class="content-section active">
+                <div class="card wide-card" style="text-align: center; padding: 60px 20px;">
+                    <h2>👋 환영합니다, <strong>{{ username }}</strong>님!</h2>
+                    <p style="color: #666; margin-top: 15px; line-height: 1.6;">
+                        <strong>Voice Analyze</strong> 서비스에 오신 것을 환영합니다.<br>
+                        왼쪽 메뉴를 통해 표절 검사, 커버곡 분석, 음성 녹음 기능을 이용해보세요.<br>
+                        모든 분석 결과는 '내 페이지'에 안전하게 저장됩니다.
+                    </p>
+                    <div style="margin-top: 40px; display: flex; gap: 20px; justify-content: center;">
+                        <button class="detect-btn" onclick="showTab('plagiarism')">표절 검사하러 가기</button>
+                        <button class="detect-btn secondary-btn" onclick="showTab('cover')">커버곡 분석하기</button>
                     </div>
                 </div>
             </section>
 
-            <section id="similarity-section" class="content-section">
+            <section id="plagiarism" class="content-section">
                 <div class="card wide-card">
                     <div class="card-icon"><i class="fas fa-waveform"></i></div>
                     <h3>노래 표절 검사기</h3>
-                    <p class="card-description">두 개의 원본 노래와 표절 의심 노래를 업로드하여 유사도를 비교합니다.</p>
+                    <p class="card-description">기준이 되는 원본 파일과 표절이 의심되는 파일을 비교합니다.</p>
                     
-                    <form action="/analyze" method="POST" enctype="multipart/form-data" onsubmit="showLoading()">
+                    <form action="/analyze-plagiarism" method="POST" enctype="multipart/form-data" onsubmit="showLoading()">
                         <div class="input-file-group">
-                            <input type="text" id="file1-path" placeholder="원본 오디오 파일 (A) 선택" class="file-path-input" readonly>
-                            <button type="button" class="browse-btn" onclick="document.getElementById('audioFile1').click();">Browse</button>
-                            <input type="file" id="audioFile1" name="file1" style="display: none;" accept="audio/*" required onchange="document.getElementById('file1-path').value = this.files[0].name;">
+                            <input type="text" id="p1-name" placeholder="기준 오디오 파일 선택" class="file-path-input" readonly>
+                            <button type="button" class="browse-btn" onclick="document.getElementById('p1').click()">파일 찾기</button>
+                            <input type="file" id="p1" name="file1" style="display:none" accept=".mp3, .wav, .m4a, .flac" required onchange="updateFileName(this, 'p1-name')">
                         </div>
                         <div class="input-file-group">
-                            <input type="text" id="file2-path" placeholder="표절 의심 파일 (B) 선택" class="file-path-input" readonly>
-                            <button type="button" class="browse-btn" onclick="document.getElementById('audioFile2').click();">Browse</button>
-                            <input type="file" id="audioFile2" name="file2" style="display: none;" accept="audio/*" required onchange="document.getElementById('file2-path').value = this.files[0].name;">
+                            <input type="text" id="p2-name" placeholder="비교할 오디오 파일 선택" class="file-path-input" readonly>
+                            <button type="button" class="browse-btn" onclick="document.getElementById('p2').click()">파일 찾기</button>
+                            <input type="file" id="p2" name="file2" style="display:none" accept=".mp3, .wav, .m4a, .flac" required onchange="updateFileName(this, 'p2-name')">
                         </div>
-                        <button type="submit" class="detect-btn">
-                            <i class="fas fa-magnifying-glass"></i> 표절 검사 시작
-                        </button>
+                        <button type="submit" class="detect-btn"><i class="fas fa-search"></i> 표절 분석 시작</button>
                     </form>
                 </div>
             </section>
 
-            <section id="cover-song-section" class="content-section">
+            <section id="cover" class="content-section">
                 <div class="card wide-card">
                     <div class="card-icon"><i class="fas fa-music"></i></div>
                     <h3>커버곡 유사도 검사기</h3>
-                    <p class="card-description">원본(MR/AR) 파일과 내 커버곡 파일을 업로드하여 유사도를 비교합니다.</p>
+                    <p class="card-description">원본(MR/AR)과 사용자가 부른 커버곡의 유사도를 측정합니다.</p>
                     
-                    <form action="/analyze" method="POST" enctype="multipart/form-data" onsubmit="showLoading()">
+                    <form action="/analyze-cover" method="POST" enctype="multipart/form-data" onsubmit="showLoading()">
                         <div class="input-file-group">
-                            <input type="text" id="fileCover1-path" placeholder="원본 MR/AR 파일 선택" class="file-path-input" readonly>
-                            <button type="button" class="browse-btn" onclick="document.getElementById('audioFileCover1').click();">Browse</button>
-                            <input type="file" id="audioFileCover1" name="file1" style="display: none;" accept="audio/*" required onchange="document.getElementById('fileCover1-path').value = this.files[0].name;">
+                            <input type="text" id="c1-name" placeholder="원본 MR/AR 파일" class="file-path-input" readonly>
+                            <button type="button" class="browse-btn" onclick="document.getElementById('c1').click()">파일 찾기</button>
+                            <input type="file" id="c1" name="file1" style="display:none" accept=".mp3, .wav, .m4a, .flac" required onchange="updateFileName(this, 'c1-name')">
                         </div>
                         <div class="input-file-group">
-                            <input type="text" id="fileCover2-path" placeholder="내 커버곡 파일 선택" class="file-path-input" readonly>
-                            <button type="button" class="browse-btn" onclick="document.getElementById('audioFileCover2').click();">Browse</button>
-                            <input type="file" id="audioFileCover2" name="file2" style="display: none;" accept="audio/*" required onchange="document.getElementById('fileCover2-path').value = this.files[0].name;">
+                            <input type="text" id="c2-name" placeholder="내 커버곡 파일" class="file-path-input" readonly>
+                            <button type="button" class="browse-btn" onclick="document.getElementById('c2').click()">파일 찾기</button>
+                            <input type="file" id="c2" name="file2" style="display:none" accept=".mp3, .wav, .m4a, .flac" required onchange="updateFileName(this, 'c2-name')">
                         </div>
-                        <button type="submit" class="detect-btn secondary-btn">
-                            <i class="fas fa-check-double"></i> 커버곡 분석 시작
-                        </button>
+                        <button type="submit" class="detect-btn secondary-btn"><i class="fas fa-check-double"></i> 커버곡 분석 시작</button>
                     </form>
                 </div>
             </section>
 
-            <section id="record-create-section" class="content-section">
+            <section id="record" class="content-section">
                 <div class="card wide-card">
                     <div class="card-icon"><i class="fas fa-microphone-alt"></i></div>
                     <h3>음성 녹음기</h3>
-                    <p class="card-description">마이크를 사용하여 음성을 녹음하고 다운로드할 수 있습니다.</p>
+                    <p class="card-description">목소리를 녹음하여 파일(.wav)로 저장할 수 있습니다.</p>
                     
-                    <div class="record-controls">
-                        <button class="detect-btn" id="startRecordBtn"><i class="fas fa-play-circle"></i> 녹음 시작</button>
-                        <button class="detect-btn secondary-btn" id="stopRecordBtn" disabled><i class="fas fa-stop-circle"></i> 녹음 중지</button>
+                    <div class="record-controls" style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                        <button class="detect-btn" id="startRecordBtn" style="flex: 1;"><i class="fas fa-circle"></i> 녹음 시작</button>
+                        <button class="detect-btn secondary-btn" id="stopRecordBtn" style="flex: 1;" disabled><i class="fas fa-stop"></i> 녹음 중지</button>
                     </div>
-
-                    <div class="audio-playback" id="playbackContainer" style="display: none;">
-                        <p>녹음된 오디오:</p>
-                        <audio id="audioPlayback" controls style="width: 100%;"></audio>
-                        <a id="downloadLink" class="detect-btn" style="display: block; margin-top: 10px; text-decoration: none; background-color: #28a745;">
+                    
+                    <div id="playbackContainer" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <p style="font-weight: bold; margin-bottom: 10px;">🎧 녹음 미리듣기</p>
+                        <audio id="audioPlayback" controls style="width: 100%; margin-bottom: 15px;"></audio>
+                        <a id="downloadLink" class="detect-btn" style="background-color: #28a745; display: block; text-align: center; text-decoration: none;">
                             <i class="fas fa-download"></i> 녹음 파일 다운로드
                         </a>
                     </div>
                 </div>
             </section>
 
-         <section id="my-page-section" class="content-section">
+            <section id="mypage" class="content-section">
                 <div class="card wide-card">
-                    <h3>내 페이지</h3>
-                    <p>안녕하세요, <strong>{{ username }}</strong>님!</p>
+                    <h3>👤 내 페이지</h3>
+                    <p style="color: #777; font-size: 0.9em;">최근 분석 기록과 계정 설정을 관리합니다.</p>
+                    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
                     
-                    <hr class="section-divider">
-                    
-                    <h4><i class="fas fa-history"></i> 내 분석 이력</h4>
-                    
-                    <ul class="analysis-history-list">
+                    <h4><i class="fas fa-list"></i> 최근 분석 기록</h4>
+                    <ul style="list-style: none; padding: 0; margin-top: 15px;">
                         {% if history %}
                             {% for item in history %}
-                            <li>
+                            <li class="history-item">
                                 <div>
-                                    <strong>{{ item.result_msg }}</strong>
-                                    <br>
-                                    <small style="color: #777;">
-                                        {{ item.created_at.strftime('%Y-%m-%d %H:%M') }} | 
-                                        파일1: {{ item.file1_path.split('/')[-1] }}
+                                    <strong style="font-size: 1.05em; color: #333;">{{ item.result_msg }}</strong><br>
+                                    <small style="color: #888;">
+                                        <i class="far fa-clock"></i> {{ item.created_at.strftime('%Y-%m-%d %H:%M') }} | 
+                                        파일: {{ item.file1_path.split('/')[-1] }}
                                     </small>
                                 </div>
-                                <span class="similarity-score {{ 'high' if item.similarity_score >= 80 else ('mid' if item.similarity_score >= 60 else 'low') }}">
-                                    {{ item.similarity_score }}%
-                                </span>
+                                {% if item.similarity_score >= 80 %}
+                                    <span class="badge badge-high">{{ item.similarity_score }}%</span>
+                                {% elif item.similarity_score >= 50 %}
+                                    <span class="badge badge-mid">{{ item.similarity_score }}%</span>
+                                {% else %}
+                                    <span class="badge badge-low">{{ item.similarity_score }}%</span>
+                                {% endif %}
                             </li>
                             {% endfor %}
                         {% else %}
-                            <li style="justify-content: center; color: #999;">
-                                아직 분석 기록이 없습니다. 첫 분석을 시작해보세요!
-                            </li>
+                            <li style="text-align: center; color: #999; padding: 20px;">기록이 없습니다.</li>
                         {% endif %}
                     </ul>
-                    <hr class="section-divider">
+
+                    <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
 
                     <h4><i class="fas fa-lock"></i> 비밀번호 변경</h4>
-                    
-                    <form class="password-change-form" action="/change-password" method="POST">
-                        
-                        <div class="input-form-group">
-                            <label for="current-password">현재 비밀번호</label>
-                            <input type="password" id="current-password" name="current_password" class="form-input-field" placeholder="현재 사용 중인 비밀번호" required>
+                    <form action="/change-password" method="POST" style="margin-top: 15px; background: #f9f9f9; padding: 20px; border-radius: 8px;">
+                        <div class="input-form-group" style="margin-bottom: 10px;">
+                            <input type="password" name="current_password" class="form-input-field" placeholder="현재 비밀번호" required style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
                         </div>
-                        
-                        <div class="input-form-group">
-                            <label for="new-password">새 비밀번호</label>
-                            <input type="password" id="new-password" name="new_password" class="form-input-field" placeholder="변경할 새 비밀번호" required>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="password" name="new_password" class="form-input-field" placeholder="새 비밀번호" required style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="password" name="confirm_password" class="form-input-field" placeholder="새 비밀번호 확인" required style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
                         </div>
-                        
-                        <div class="input-form-group">
-                            <label for="confirm-password">새 비밀번호 확인</label>
-                            <input type="password" id="confirm-password" name="confirm_password" class="form-input-field" placeholder="새 비밀번호를 다시 입력하세요" required>
-                        </div>
-                        <button type="submit" class="detect-btn">비밀번호 변경</button>
+                        <button type="submit" class="detect-btn" style="margin-top: 15px; width: auto; padding: 10px 20px;">변경하기</button>
                     </form>
                 </div>
             </section>
@@ -233,72 +224,131 @@
     </div>
 
     <script>
-        // 1. 탭 전환 로직
-        document.addEventListener('DOMContentLoaded', function() {
-            const navItems = document.querySelectorAll('.nav-item');
-            const sections = document.querySelectorAll('.content-section');
+        // 1. 탭 전환 및 유지 함수 (새로고침 해도 유지됨)
+        function showTab(tabId, element) {
+            // 모든 섹션 숨김
+            document.querySelectorAll('.content-section').forEach(el => el.classList.remove('active'));
+            // 선택한 섹션 보임
+            document.getElementById(tabId).classList.add('active');
+            
+            // 메뉴 스타일 초기화
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            
+            // 클릭한 메뉴 활성화 (버튼 클릭 시 element가 없을 수 있음)
+            if (element) {
+                element.classList.add('active');
+            } else {
+                // 버튼으로 이동했을 때 사이드바 메뉴도 같이 활성화
+                const targetLink = Array.from(document.querySelectorAll('.nav-item'))
+                    .find(el => el.getAttribute('onclick').includes(tabId));
+                if(targetLink) targetLink.classList.add('active');
+            }
 
-            navItems.forEach(item => {
-                item.addEventListener('click', function(e) {
-                    if (this.classList.contains('logout')) return; // 로그아웃은 제외
-                    e.preventDefault();
+            // 현재 탭 저장
+            localStorage.setItem('activeTab', tabId);
+        }
 
-                    // 탭 활성화
-                    navItems.forEach(nav => nav.classList.remove('active'));
-                    this.classList.add('active');
+        // 2. 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', () => {
+            // 저장된 탭 불러오기 (없으면 home)
+            const lastTab = localStorage.getItem('activeTab') || 'home';
+            showTab(lastTab);
 
-                    // 섹션 표시
-                    const targetId = this.dataset.target;
-                    sections.forEach(sec => sec.classList.remove('active'));
-                    document.getElementById(targetId).classList.add('active');
-                });
-            });
+            // 알림 메시지 3초 후 자동 삭제
+            const flashMsgs = document.querySelectorAll('.flash-message');
+            if (flashMsgs.length > 0) {
+                setTimeout(() => {
+                    flashMsgs.forEach(msg => {
+                        msg.style.opacity = '0';
+                        setTimeout(() => msg.remove(), 500);
+                    });
+                }, 3000);
+            }
         });
 
-        // 2. 로딩 화면 표시 함수
+        // 3. 파일명 업데이트 및 확장자 검사
+        function updateFileName(input, targetId) {
+            if (input.files && input.files[0]) {
+                const fileName = input.files[0].name;
+                // 확장자 검사 (오디오 파일만)
+                if (!/\.(mp3|wav|m4a|flac|ogg)$/i.test(fileName)) {
+                    alert("오디오 파일(.mp3, .wav 등)만 선택해주세요.");
+                    input.value = ""; // 선택 초기화
+                    document.getElementById(targetId).value = "";
+                    return;
+                }
+                document.getElementById(targetId).value = fileName;
+            }
+        }
+
+        // 4. 로딩 화면 표시
         function showLoading() {
             document.getElementById('loading-overlay').style.display = 'flex';
         }
 
-        // 3. 간단 녹음 로직 (wav/webm)
+        // 5. 녹음기 로직 (타이머 포함)
         const startBtn = document.getElementById('startRecordBtn');
         const stopBtn = document.getElementById('stopRecordBtn');
-        const audioPlayer = document.getElementById('audioPlayback');
-        const downloadLink = document.getElementById('downloadLink');
         let mediaRecorder;
         let audioChunks = [];
+        let recordInterval;
+        let recordTime = 0;
 
-        startBtn.addEventListener('click', async () => {
+        startBtn.onclick = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 
                 mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                
                 mediaRecorder.onstop = () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    audioPlayer.src = audioUrl;
-                    downloadLink.href = audioUrl;
-                    downloadLink.download = 'my_recording.wav';
+                    const blob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const url = URL.createObjectURL(blob);
+                    document.getElementById('audioPlayback').src = url;
+                    
+                    const downBtn = document.getElementById('downloadLink');
+                    downBtn.href = url;
+                    const now = new Date();
+                    const timestamp = now.toISOString().replace(/[-:.]/g, "").slice(0, 15);
+                    downBtn.download = `recording_${timestamp}.wav`;
+                    
                     document.getElementById('playbackContainer').style.display = 'block';
                     audioChunks = [];
                 };
 
                 mediaRecorder.start();
+                
+                // UI 변경
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
-            } catch (err) {
-                alert("마이크 사용 권한이 필요합니다.");
-            }
-        });
+                document.getElementById('playbackContainer').style.display = 'none';
 
-        stopBtn.addEventListener('click', () => {
+                // 타이머 시작
+                recordTime = 0;
+                startBtn.innerHTML = '<i class="fas fa-circle" style="color:red; animation:blink 1s infinite;"></i> 녹음 중 (00:00)';
+                
+                recordInterval = setInterval(() => {
+                    recordTime++;
+                    const min = String(Math.floor(recordTime / 60)).padStart(2, '0');
+                    const sec = String(recordTime % 60).padStart(2, '0');
+                    startBtn.innerHTML = `<i class="fas fa-circle" style="color:red; animation:blink 1s infinite;"></i> 녹음 중 (${min}:${sec})`;
+                }, 1000);
+
+            } catch (e) {
+                console.error(e);
+                alert("마이크 권한이 필요합니다. 브라우저 설정에서 마이크를 허용해주세요.");
+            }
+        };
+
+        stopBtn.onclick = () => {
             if (mediaRecorder) {
                 mediaRecorder.stop();
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
+                clearInterval(recordInterval);
+                startBtn.innerHTML = '<i class="fas fa-circle"></i> 녹음 시작';
             }
-        });
+        };
     </script>
 </body>
 </html>

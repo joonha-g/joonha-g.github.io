@@ -51,14 +51,21 @@ verification_codes = {}
 reset_codes = {}
 
 # --- 2. 데이터베이스 설정 ---
-DB_USER = "postgres"
-DB_PASSWORD = "postgres"
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_NAME = "music_db"
+# DB_USER = "postgres"
+# DB_PASSWORD = "postgres"
+# DB_HOST = "localhost"
+# DB_PORT = "5432"
+# DB_NAME = "music_db"
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+basedir = os.path.abspath(os.path.dirname(__file__))
+
+# 그 폴더 안에 'music_database.db' 라는 파일을 만들어서 DB로 씁니다.
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'music_database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
 # --- 3. 모델 ---
@@ -390,14 +397,6 @@ def change_password():
     flash('비밀번호가 성공적으로 변경되었습니다.')
     return redirect(url_for('index'))
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
-
-
-
-    
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
